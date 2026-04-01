@@ -1,28 +1,27 @@
 # Chicago Crime Prediction — .gitignore
-# ============================================================
 
-# ── Data files ───────────────────────────────────────────
+# Data files 
 # Never commit raw or processed data to GitHub
 data/
 *.csv
 *.parquet
 *.json
 
-# ── Model outputs ────────────────────────────────────────
+# Model outputs 
 # Trained model files can be very large
 outputs/*.pth
 outputs/*.keras
 outputs/*.h5
 outputs/*.pt
 
-# ── Google Cloud credentials ─────────────────────────────
+# Google Cloud credentials 
 # IMPORTANT: never commit credentials or API keys
 *.json
 application_default_credentials.json
 service_account*.json
 *credentials*.json
 
-# ── Python ───────────────────────────────────────────────
+# Python 
 __pycache__/
 *.py[cod]
 *.pyo
@@ -33,27 +32,27 @@ dist/
 build/
 .eggs/
 
-# ── Virtual environments ─────────────────────────────────
+# Virtual environments 
 venv/
 env/
 .env
 .venv
 ENV/
 
-# ── Jupyter notebooks checkpoints ───────────────────────
+# Jupyter notebooks checkpoints 
 .ipynb_checkpoints/
 *.ipynb_checkpoints
 
-# ── VS Code ──────────────────────────────────────────────
+# VS Code 
 .vscode/
 *.code-workspace
 
-# ── PySpark ──────────────────────────────────────────────
+# PySpark 
 spark-warehouse/
 metastore_db/
 derby.log
 
-# ── OS files ─────────────────────────────────────────────
+# OS files
 .DS_Store
 Thumbs.db
 desktop.ini
