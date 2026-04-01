@@ -1,0 +1,20 @@
+# Data & BigQuery 
+google-cloud-bigquery
+pyarrow
+pandas
+
+# Big Data Processing 
+pyspark
+
+# Machine Learning 
+torch
+tensorflow
+scikit-learn
+
+# Visualization 
+matplotlib
+seaborn
+
+# Notebook Support
+jupyter
+ipykernel
