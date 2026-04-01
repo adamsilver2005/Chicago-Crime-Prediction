@@ -7,7 +7,7 @@ pandas
 pyspark
 
 # Machine Learning 
-torch
+lightgbm
 tensorflow
 scikit-learn
 
