@@ -1,18 +1,6 @@
 # Chicago Crime Prediction — .gitignore
 
-# Data files 
-# Never commit raw or processed data to GitHub
-data/
-*.csv
-*.parquet
-*.json
 
-# Model outputs 
-# Trained model files can be very large
-outputs/*.pth
-outputs/*.keras
-outputs/*.h5
-outputs/*.pt
 
 # Google Cloud credentials 
 # IMPORTANT: never commit credentials or API keys
