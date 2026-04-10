@@ -38,9 +38,9 @@ The dataset contains every reported crime in the City of Chicago from 2001 to pr
 | Property | Value |
 |----------|-------|
 | Full dataset size | ~8.5 million rows |
-| Training sample pulled | ~1.36 million rows (60% random sample, 2015–2023) |
-| After preprocessing | 1,231,143 rows (1st prediction task) |
-| Aggregated rows | ~2,100 district-month pairs (2nd prediction task) |
+| Training sample pulled | ~2.05 million rows (2015–2023) |
+| After preprocessing | 2,050,345 rows (1st prediction task) |
+| Aggregated rows | ~2,148 district-month pairs (2nd prediction task) |
 | Google Cloud Platform Project ID | healthy-result-491819-e4 |
 
 Key observations from initial exploration:
@@ -61,34 +61,36 @@ chicago-crime-ml/
 ├── .gitignore
 ├── LICENSE
 │
-├── data/                               ← git ignored
+├── data/
+│   ├── chicago_crime_raw.csv          # ~2.05M row raw pull from BigQuery
+│   ├── model1_classification.csv      # 2.05M rows, 15 features + label (Prediction task 1 input)
+│   └── model2_regression.csv          # ~2,148 rows, district/month aggregation (Prediction task 2 input)
 │
-├── outputs/                            ← git ignored
-│   ├── lgbm_crime_classifier.txt
+├── outputs/
+│   ├── lgbm_crime_classifier.txt      # saved LightGBM model
 │   ├── lgbm_feature_importance.png
 │   ├── lgbm_confusion_matrix.png
-│   ├── tf_crime_regressor.keras
+│   ├── tf_crime_regressor.keras       # saved TensorFlow model
 │   ├── tf_training_curves.png
 │   └── tf_actual_vs_predicted.png
 │
-├── notebooks/                          Colab notebooks (.ipynb)
+├── google_colab_notebooks/                         # Colab notebooks (.ipynb)
 │   ├── notebook1_bigquery_pyspark.ipynb
 │   ├── notebook2_lightgbm_classifier.ipynb
 │   └── notebook3_tensorflow_regressor.ipynb
 │
-└── src/
-    ├── bigquery/
-    │   ├── 01_explore.sql              ← all exploration queries, fully commented
-    │   └── 02_load_to_local.py         ← pulls 200k sample to local CSV
-    ├── pyspark/
-    │   └── 01_preprocess.py            ← local version (Java 25 issue on Windows — use Colab)
-    ├── lightgbm/
-    │   └── 01_train_classifier.py
-    └── tensorflow/
-        └── 01_train_regressor.py
+├── predictive_modeling/
+│   ├── light_gbm_classifier.py        
+│   ├── tensorflow_regressor.py
+│
+├── preprocessing_scripts/
+│   ├── explore.sql                # all exploration queries
+│   ├── loading_data.py            # pulls 200k sample to local CSV  
+│   └── preprocess_pyspark.py      # local version (Java 25 issue on Windows, so use Colab) 
+
 ```
 
-Note on environment:** PySpark does not run locally on this machine due to a Java 25 incompatibility with Hadoop. All heavy computation (preprocessing, model training) runs on Google Colab with a T4 GPU. Local `.py` files in `src/` are reference copies of the notebook code.
+Note on environment: PySpark does not run locally on this machine due to a Java 25 incompatibility with Hadoop. All heavy computation (preprocessing, model training) runs on Google Colab with a T4 GPU. Local .py files are reference copies of the notebook code.
 
 
 ## Dataset Columns
@@ -97,52 +99,51 @@ The raw BigQuery table contains the following columns used in this project:
 
 | Column | Description |
 |--------|-------------|
-| `primary_type` | Crime classification (e.g. THEFT, BATTERY) — Model 1 target |
-| `description` | Detailed sub-description of the crime |
-| `location_description` | Type of location where the crime occurred (e.g. STREET, RESIDENCE) |
-| `arrest` | Whether an arrest was made (boolean) |
-| `domestic` | Whether the crime was domestic in nature (boolean) |
-| `district` | Chicago Police Department district number |
-| `ward` | City council ward number |
-| `community_area` | One of 77 defined Chicago community areas |
-| `date` | Full timestamp of the crime |
-| `latitude` / `longitude` | Geographic coordinates |
+| primary_type | Crime classification (e.g. THEFT, BATTERY), which is the prediction task 1 target |
+| description | Detailed sub-description of the crime |
+| location_description | Type of location where the crime occurred (e.g. STREET, RESIDENCE) |
+| arrest | Whether an arrest was made (1 or 0) |
+| domestic | Whether the crime was domestic in nature (1 or 0) |
+| district | Chicago Police Department district number |
+| ward | City council ward number |
+| community_area | One of 77 defined Chicago community areas |
+| date | Full timestamp of the crime |
+| latitude / longitude | Geographic coordinates |
 
 
-## Stage 1: BigQuery Exploration
+## BigQuery Exploration
 
-All exploration queries are in `src/bigquery/01_explore.sql`. Each query is fully commented explaining what it does and what insights it produced.
+All exploration queries are in preprocessing_scripts/explore.sql. Each query is fully commented explaining what it does and what insights it produced.
 
 The queries covered:
 
 - Raw data inspection (first 10 rows, schema, column types)
 - Total row count confirmation (~8.5M rows)
-- Crime type distribution — identifying class imbalance and selecting top 10 types
-- Crime count by year and district — identifying the District 13 absence and District 31 artifact
+- Crime type distribution; so identifying class imbalance and selecting top 10 types
+- Crime count by year and district; so identifying the District 13 absence and District 31 artifact
 - Null checks on all key columns before committing to a feature set
 - Random sample pull for local development (5% sample, ~200k rows)
 
 The exploration phase directly shaped several preprocessing decisions: the choice to keep only the top 10 crime types, the decision to filter to 2015–2023, and the identification of which columns had enough coverage to use as features.
 
 
-## Stage 2: PySpark Preprocessing
+## PySpark Preprocessing
 
-Preprocessing runs in **Notebook 1 v3** on Google Colab. The full pipeline pulls ~1.36M rows from BigQuery and processes them using PySpark before saving two output CSVs to Google Drive.
+Preprocessing runs in **Notebook 1 v3** on Google Colab. The full pipeline pulls ~2.05M rows from BigQuery and processes them using PySpark before saving two output CSVs to Google Drive.
 
 ### Cleaning
 
 Rows with nulls in any of the following columns were dropped:
 
-`primary_type`, `district`, `ward`, `community_area`, `year`, `month`, `day_of_week`, `hour_of_day`, `arrest`, `domestic`, `location_description`, `description`
+primary_type, district, ward, community_area, year, month, day_of_week, hour_of_day, arrest, domestic, location_description, description
 
-Input: **1,357,861 rows** → after cleaning: **1,350,842 rows** (loss of ~0.5%)
 
 ### Outputs
 
 | File | Description |
 |------|-------------|
-| `model1_classification.csv` | 1,231,143 rows, 15 features + label + primary_type |
-| `model2_regression.csv` | ~2,400 rows, crime count aggregated per district/month |
+| model1_classification.csv | 2,050,345 rows, 15 features + label + primary_type |
+| `model2_regression.csv` | ~2,148 rows, crime count aggregated per district/month |
 
 
 ## Feature Engineering
