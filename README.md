@@ -129,7 +129,7 @@ The exploration phase directly shaped several preprocessing decisions: the choic
 
 ## PySpark Preprocessing
 
-Preprocessing runs in **Notebook 1 v3** on Google Colab. The full pipeline pulls ~2.05M rows from BigQuery and processes them using PySpark before saving two output CSVs to Google Drive.
+Preprocessing runs in bigquery_pyspark.ipynb on Google Colab. The full pipeline pulls ~2.05M rows from BigQuery and processes them using PySpark before saving two output CSVs to Google Drive.
 
 ### Cleaning
 
@@ -143,7 +143,7 @@ primary_type, district, ward, community_area, year, month, day_of_week, hour_of_
 | File | Description |
 |------|-------------|
 | model1_classification.csv | 2,050,345 rows, 15 features + label + primary_type |
-| `model2_regression.csv` | ~2,148 rows, crime count aggregated per district/month |
+| model2_regression.csv | ~2,148 rows, crime count aggregated per district/month |
 
 
 ## Feature Engineering
@@ -152,70 +152,59 @@ Feature engineering was an iterative process across multiple notebook versions. 
 
 ### Base Features (extracted from BigQuery)
 
-Time components were extracted directly in the SQL query rather than in Python, since the raw `date` column is a full timestamp and the models need numeric inputs:
+Time components were extracted directly in the SQL query rather than in Python, since the raw date column is a full timestamp and the models need numeric inputs:
 
 | Feature | Source | Description |
 |---------|--------|-------------|
-| `year` | `EXTRACT(YEAR FROM date)` | Crime year |
-| `month` | `EXTRACT(MONTH FROM date)` | Crime month |
-| `day_of_week` | `EXTRACT(DAYOFWEEK FROM date)` | 1=Sunday, 7=Saturday |
-| `hour_of_day` | `EXTRACT(HOUR FROM date)` | Hour the crime occurred |
-| `district` | Raw | Chicago PD district number |
-| `ward` | Raw | City council ward number |
-| `community_area` | Raw | One of 77 Chicago community areas |
-| `arrest_int` | `arrest` cast to 0/1 | Whether an arrest was made |
-| `domestic_int` | `domestic` cast to 0/1 | Whether the crime was domestic |
+| year | EXTRACT(YEAR FROM date) | Crime year |
+| month | EXTRACT(MONTH FROM date) | Crime month |
+| day_of_week | EXTRACT(DAYOFWEEK FROM date) | 1=Sunday, 7=Saturday |
+| hour_of_day | EXTRACT(HOUR FROM date) | Hour the crime occurred |
+| district | Raw | Chicago PD district number |
+| ward | Raw | City council ward number |
+| community_area | Raw | One of 77 Chicago community areas |
+| arrest_int | arrest cast to 0/1 | Whether an arrest was made |
+| domestic_int | domestic cast to 0/1 | Whether the crime was domestic |
 
 ### Engineered Features (created in PySpark)
 
 | Feature | Logic | Rationale |
 |---------|-------|-----------|
-| `is_rush_hour` | 1 if 7–9am or 4–7pm | Crime patterns differ when streets and transit are busy |
-| `is_weekend` | 1 if Saturday or Sunday | Weekend crimes have different profiles than weekday crimes |
-| `season` | 1=winter, 2=spring, 3=summer, 4=fall | Seasonal patterns (e.g. violent crime peaks in summer) |
-| `location_encoded` | Top 50 location types → integer via StringIndexer | Where a crime happens is highly predictive of what type it is |
-| `description_encoded` | Grouped into 12 categories → integer | Crime descriptions contain severity/method info without directly encoding the target |
-| `district_hour` | `district × 100 + hour_of_day` | Interaction feature: District 8 at 2am behaves very differently from District 18 at 2am |
+| is_rush_hour | 1 if 7–9am or 4–7pm | Crime patterns differ when streets and transit are busy |
+| is_weekend | 1 if Saturday or Sunday | Weekend crimes have different profiles than weekday crimes |
+| season | 1=winter, 2=spring, 3=summer, 4=fall | Seasonal patterns (e.g. violent crime peaks in summer) |
+| location_encoded | Top 50 location types → integer via StringIndexer | Where a crime happens is highly predictive of what type it is |
+| description_encoded | Grouped into 12 categories → integer | Crime descriptions contain severity/method info without directly encoding the target |
+| district_hour | district × 100 + hour_of_day | Interaction feature: District 8 at 2am behaves very differently from District 18 at 2am |
 
-### Why `description_encoded` and not raw `description`?
+### Why description_encoded and not raw description?
 
-The raw `description` column contains hundreds of unique values and partially encodes the crime type itself (e.g. "AGGRAVATED BATTERY" implies BATTERY). Rather than dropping it or leaking the target, descriptions were grouped into 12 broad categories based on keyword matching:
+The raw description column contains hundreds of unique values and partially encodes the crime type itself (e.g. "AGGRAVATED BATTERY" implies BATTERY). Rather than dropping it or leaking the target, descriptions were grouped into 12 broad categories based on keyword matching:
 
 `AGGRAVATED` · `ARMED` · `ATTEMPT` · `SIMPLE` · `DOMESTIC` · `RETAIL` · `FINANCIAL` · `POSSESSION` · `DELIVERY` · `VEHICLE` · `DAMAGE` · `FORCIBLE` · `OTHER`
 
 This preserves the severity and method signal while avoiding target leakage.
 
-### Iterative Improvement
-
-The feature set was built up across three versions:
-
-| Version | Features Added | Model 1 Accuracy | Model 1 Macro F1 |
-|---------|---------------|-----------------|-----------------|
-| v1 | year, month, day_of_week, hour_of_day, district, arrest_int, domestic_int, is_rush_hour, is_weekend, season | 30% | 0.26 |
-| v2 | + `location_encoded` | 39% | 0.36 |
-| v3 | + `ward`, `community_area`, `description_encoded`, `district_hour` | **62%** | **0.63** |
-
-The single largest jump came from adding `description_encoded` in v3 — it became the most important feature by a wide margin, contributing more information gain than all other features combined.
 
 ### Regression-Specific Feature Engineering (Model 2)
 
-For Model 2, the basic `model2_regression.csv` (only 4 features) was discarded in favour of re-aggregating directly from `model1_classification.csv`. This allowed computing richer district-level statistics per month:
+For Model 2, the basic model2_regression.csv (only 4 features) was discarded in favour of re-aggregating directly from model1_classification.csv. This allowed computing richer district-level statistics per month:
 
 | Feature | Description |
 |---------|-------------|
-| `arrest_rate` | % of crimes resulting in arrest that month |
-| `domestic_rate` | % of crimes that were domestic that month |
-| `avg_hour` | Average hour of day crimes occurred |
-| `rush_hour_rate` | % of crimes during rush hour |
-| `weekend_rate` | % of crimes on weekends |
-| `unique_wards` | Number of distinct wards with crimes that month |
-| `unique_communities` | Number of distinct community areas with crimes |
-| `top_location` | Most common crime location type that month |
-| `crime_count_lag1/2/3` | Crime count from 1, 2, 3 months prior (per district) |
-| `rolling_avg_3m` | Rolling 3-month average crime count (per district) |
-| `crime_count_yoy` | Crime count same district, same month, prior year |
+| arrest_rate | % of crimes resulting in arrest that month |
+| domestic_rate | % of crimes that were domestic that month |
+| avg_hour | Average hour of day crimes occurred |
+| rush_hour_rate | % of crimes during rush hour |
+| weekend_rate | % of crimes on weekends |
+| unique_wards | Number of distinct wards with crimes that month |
+| unique_communities | Number of distinct community areas with crimes |
+| top_location | Most common crime location type that month |
+| crime_count_lag1/2/3 | Crime count from 1, 2, 3 months prior (per district) |
+| rolling_avg_3m | Rolling 3-month average crime count (per district) |
+| crime_count_yoy | Crime count same district, same month, prior year |
 
-The lag features were the most impactful addition — crime counts are highly autocorrelated month-to-month, and the baseline model had no temporal memory, which is why it was predicting negative crime counts.
+The lag features were the most impactful addition, where crime counts are highly autocorrelated month-to-month, and the baseline model had no temporal memory, which is why it was predicting negative crime counts.
 
 
 ## Model 1: LightGBM Crime Type Classifier
@@ -226,12 +215,12 @@ The lag features were the most impactful addition — crime counts are highly au
 
 | Split | Rows |
 |-------|------|
-| Training | 984,914 |
-| Test | 246,229 |
+| Training | 1,640,276 |
+| Test | 410,069 |
 
 Classes: ASSAULT, BATTERY, BURGLARY, CRIMINAL DAMAGE, DECEPTIVE PRACTICE, MOTOR VEHICLE THEFT, NARCOTICS, OTHER OFFENSE, ROBBERY, THEFT
 
-Class weights were applied to handle imbalance — THEFT makes up 25% of training data while ROBBERY makes up only 4%.
+Class weights were applied to handle imbalance, THEFT makes up 25% of training data while ROBBERY makes up only 4%.
 
 ### Model Configuration
 
@@ -243,22 +232,22 @@ Class weights were applied to handle imbalance — THEFT makes up 25% of trainin
 | Max depth | 8 |
 | Num leaves | 63 |
 | Early stopping patience | 50 |
-| **Best iteration** | **615 trees** |
+| **Best iteration** | **438 trees** |
 
 ### Results
 
 | Class | Precision | Recall | F1 |
 |-------|-----------|--------|----|
-| ASSAULT | 0.46 | 0.64 | 0.53 |
-| BATTERY | 0.83 | 0.65 | 0.73 |
-| BURGLARY | 0.57 | 0.78 | 0.66 |
+| ASSAULT | 0.46 | 0.65 | 0.54 |
+| BATTERY | 0.84 | 0.65 | 0.73 |
+| BURGLARY | 0.57 | 0.79 | 0.66 |
 | CRIMINAL DAMAGE | 0.74 | 0.60 | 0.66 |
-| DECEPTIVE PRACTICE | 0.51 | 0.71 | 0.59 |
-| MOTOR VEHICLE THEFT | 0.38 | 0.82 | 0.52 |
-| NARCOTICS | 0.85 | 0.95 | **0.90** |
+| DECEPTIVE PRACTICE | 0.49 | 0.72 | 0.59 |
+| MOTOR VEHICLE THEFT | 0.38 | 0.82 | 0.53 |
+| NARCOTICS | 0.84 | 0.96 | **0.90** |
 | OTHER OFFENSE | 0.41 | 0.58 | 0.48 |
 | ROBBERY | 0.60 | 0.72 | 0.66 |
-| THEFT | 0.83 | 0.40 | 0.54 |
+| THEFT | 0.84 | 0.40 | 0.54 |
 | **Overall accuracy** | | | **0.62** |
 | **Macro avg** | 0.62 | 0.69 | **0.63** |
 
@@ -266,9 +255,9 @@ Class weights were applied to handle imbalance — THEFT makes up 25% of trainin
 
 ![Feature Importance](outputs/lgbm_feature_importance.png)
 
-`description_encoded` dominates — it carries roughly 4× more information gain than `location_encoded` (second place). This makes sense intuitively: the way a crime is described (AGGRAVATED vs SIMPLE vs POSSESSION) is a very strong signal about its type. `arrest_int` and `domestic_int` are also high-importance features, reflecting that some crime types are far more likely to result in arrest and that domestic crimes cluster into specific categories.
+description_encoded dominates, it carries roughly 4× more information gain than location_encoded (second place). This makes sense intuitively: the way a crime is described (AGGRAVATED vs SIMPLE vs POSSESSION) is a very strong signal about its type. arrest_int and domestic_int are also high-importance features, reflecting that some crime types are far more likely to result in arrest and that domestic crimes cluster into specific categories.
 
-Time features (`hour_of_day`, `year`) contribute modestly. Binary engineered features (`is_rush_hour`, `is_weekend`) add minimal gain — the underlying raw features they summarize are already available to the model.
+Time features (hour_of_day, year) contribute modestly. Binary engineered features (is_rush_hour, is_weekend) add minimal gain, and the underlying raw features they summarize are already available to the model.
 
 ### Confusion Matrix
 
