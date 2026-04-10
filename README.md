@@ -173,8 +173,8 @@ Time components were extracted directly in the SQL query rather than in Python, 
 | is_rush_hour | 1 if 7–9am or 4–7pm | Crime patterns differ when streets and transit are busy |
 | is_weekend | 1 if Saturday or Sunday | Weekend crimes have different profiles than weekday crimes |
 | season | 1=winter, 2=spring, 3=summer, 4=fall | Seasonal patterns (e.g. violent crime peaks in summer) |
-| location_encoded | Top 50 location types → integer via StringIndexer | Where a crime happens is highly predictive of what type it is |
-| description_encoded | Grouped into 12 categories → integer | Crime descriptions contain severity/method info without directly encoding the target |
+| location_encoded | Top 50 location types to integer via StringIndexer | Where a crime happens is highly predictive of what type it is |
+| description_encoded | Grouped into 12 categories to integer | Crime descriptions contain severity/method info without directly encoding the target |
 | district_hour | district × 100 + hour_of_day | Interaction feature: District 8 at 2am behaves very differently from District 18 at 2am |
 
 ### Why description_encoded and not raw description?
@@ -263,7 +263,7 @@ Time features (hour_of_day, year) contribute modestly. Binary engineered feature
 
 ![Confusion Matrix](outputs/lgbm_confusion_matrix.png)
 
-**Easiest to classify:** NARCOTICS (F1: 0.90) — narcotics crimes have very distinct location types and description patterns that make them nearly unambiguous to the model.
+**Easiest to classify:** NARCOTICS (F1: 0.90), narcotics crimes have very distinct location types and description patterns that make them nearly unambiguous to the model.
 
 **Hardest distinction:** ASSAULT vs BATTERY (30% of assault cases misclassified as battery). These two crimes are legally similar, often occur in the same locations, and share overlapping description categories — they are genuinely difficult to separate without additional context.
 
@@ -274,15 +274,6 @@ Time features (hour_of_day, year) contribute modestly. Binary engineered feature
 
 **Task:** Predict the total number of crimes in a given police district for a given month.
 
-### Architecture
-
-```
-Input(17) → Dense(128, ReLU) → BatchNorm → Dropout(0.3)
-          → Dense(64, ReLU)  → BatchNorm → Dropout(0.2)
-          → Dense(32, ReLU)  → Dropout(0.1)
-          → Dense(1)
-```
-
 | Setting | Value |
 |---------|-------|
 | Loss function | Huber (robust to outlier districts) |
@@ -292,12 +283,12 @@ Input(17) → Dense(128, ReLU) → BatchNorm → Dropout(0.3)
 
 ### Train/Test Split
 
-A **chronological split** was used — not a random split — to prevent data leakage across time:
+A chronological split was used, not a random split, was used to prevent data leakage across time:
 
 | Split | Years | Rows |
 |-------|-------|------|
-| Train | 2015–2021 | 1,594 |
-| Test | 2022–2023 | 542 |
+| Train | 2015–2021 | 1,603 |
+| Test | 2022–2023 | 545 |
 
 Using a random split on time-series data would allow the model to see future months during training, artificially inflating test scores.
 
@@ -309,7 +300,7 @@ Using a random split on time-series data would allow the model to see future mon
 
 ![Actual vs Predicted](outputs/tf_actual_vs_predicted.png)
 
-The scatter plot shows a clear positive correlation between actual and predicted crime counts, with most points clustering near the diagonal. The model handles mid-range districts well but underestimates extreme months — the highest-crime month in the test set (986 crimes) is predicted at ~700, reflecting the model's tendency to regress toward the mean on outlier months.
+The scatter plot shows a clear positive correlation between actual and predicted crime counts, with most points clustering near the diagonal. The model handles mid-range districts well but underestimates extreme months, where the highest-crime month in the test set (1583 crimes) is predicted at ~902, reflecting the model's tendency to regress toward the mean on outlier months.
 
 ### Benchmark: TensorFlow vs XGBoost
 
@@ -317,10 +308,10 @@ To understand whether a neural network is the right tool for this problem, the T
 
 | Model | MAE | RMSE | R² | MAE % of mean |
 |-------|-----|------|----|----------------|
-| TensorFlow (NN) | ~76 crimes | ~98 crimes | 0.654 | ~15% |
-| **XGBoost** | **38 crimes** | **50 crimes** | **0.911** | **7.5%** |
+| TensorFlow (NN) | ~111.73 crimes | ~142 crimes | 0.746 | ~13.3% |
+| **XGBoost** | **~58.04 crimes** | **75.68 crimes** | **0.928** | **6.9%** |
 
-XGBoost achieves roughly half the error and explains 91% of variance vs 65% for the neural network, on ~2,100 rows of aggregated tabular data. This is a well-documented pattern: gradient boosting tends to outperform neural networks on small tabular datasets. Neural networks typically need much larger datasets to develop an advantage over tree-based methods.
+XGBoost achieves roughly half the error and explains 93% of variance vs 75% for the neural network, on ~2,148 rows of aggregated tabular data. This is a well-documented pattern: gradient boosting tends to outperform neural networks on small tabular datasets. Neural networks typically need much larger datasets to develop an advantage over tree-based methods.
 
 The TensorFlow model is retained as a demonstration of Keras implementation. XGBoost is the stronger production choice for this problem size.
 
@@ -329,11 +320,11 @@ The TensorFlow model is retained as a demonstration of Keras implementation. XGB
 
 This project built an end-to-end machine learning pipeline from raw cloud data to trained models, covering SQL exploration, distributed preprocessing, feature engineering, and two distinct prediction tasks.
 
-**Model 1 (LightGBM classifier)** achieved 62% accuracy and macro F1 of 0.63 on a 10-class problem — a 32 percentage point improvement over the initial 30% baseline. The three-version iteration showed that feature quality drives performance far more than model tuning: adding `description_encoded`, `ward`, `community_area`, and `district_hour` in a single step improved accuracy by 23 points. The confusion matrix confirms the model has learned meaningful patterns — NARCOTICS is nearly perfectly classified, while the ASSAULT/BATTERY confusion reflects a genuine ambiguity in the underlying data rather than a model failure.
+**Model 1 (LightGBM classifier)** achieved 62% accuracy and macro F1 of 0.63 on a 10-class problem, which is a 32 percentage point improvement over the initial 30% baseline. The confusion matrix confirms the model has learned meaningful patterns, NARCOTICS is nearly perfectly classified, while the ASSAULT/BATTERY confusion reflects a genuine ambiguity in the underlying data rather than a model failure.
 
-**Model 2 (TensorFlow regressor)** started with a 72.5% MAE-to-mean ratio on a 4-feature baseline and was brought down to ~15% through feature engineering alone, without changing the model architecture. The most impactful changes were the lag features (`crime_count_lag1`, `rolling_avg_3m`, `crime_count_yoy`), which gave the model temporal memory it previously lacked entirely. The XGBoost benchmark revealed that the neural network is not the best tool for this aggregated tabular dataset — an expected and instructive finding. On ~2,100 rows, gradient boosting achieves R²=0.91 vs the neural network's 0.65.
+**Model 2 (TensorFlow regressor)** started with a 72.5% MAE-to-mean ratio on a 4-feature baseline and was brought down to ~13.3% through feature engineering alone, without changing the model architecture. The most impactful changes were the lag features (crime_count_lag1, rolling_avg_3m, crime_count_yoy), which gave the model temporal memory it previously lacked entirely. The XGBoost benchmark revealed that the neural network is not the best tool for this aggregated tabular dataset, which is an expected finding. On ~2,148 rows, gradient boosting achieves R²=0.93 vs the neural network's 0.75.
 
-The broader takeaway from both models is that feature engineering drove the majority of performance gains at every stage. The jump from v1 to v3 in the classifier, the introduction of lag features in the regressor, and the decision to re-aggregate from the raw 1.23M row dataset rather than use the basic aggregation — these were all feature engineering decisions, not model decisions. Architecture was largely secondary throughout.
+The broader takeaway from both models is that feature engineering drove the majority of performance gains at every stage. The improvement in feature engineering in the classifier,  and the introduction of lag features in the regressor, were all feature engineering decisions, not model decisions. Architecture was largely secondary throughout.
 
 
 ## Tools and Libraries
@@ -356,7 +347,7 @@ The broader takeaway from both models is that feature engineering drove the majo
 
 **1. Clone the repository:**
 ```bash
-git clone https://github.com/YOUR_USERNAME/chicago-crime-ml.git
+git clone https://github.com/adamsilver2005/chicago-crime-ml.git
 cd chicago-crime-ml
 ```
 
@@ -372,16 +363,16 @@ gcloud auth application-default login
 
 **4. Optional — pull a local sample (~200k rows):**
 ```bash
-python src/bigquery/02_load_to_local.py
+python preprocessing_scripts/loading_data.py
 ```
 
 **5. Run full pipeline on Google Colab (recommended):**
 
-Download the notebooks in `notebooks/` and open on Google Colab with a T4 GPU runtime:
-- `notebook1_bigquery_pyspark.ipynb` — data pull + preprocessing (run this first)
-- `notebook2_lightgbm_classifier.ipynb` — Model 1 training
-- `notebook3_tensorflow_regressor.ipynb` — Model 2 training
+Download the notebooks in google_colab_notebooks and open on Google Colab with a T4 GPU runtime:
+- bigquery_pyspark.ipynb : data pull + preprocessing (run this first)
+- lightgbm_classifier.ipynb : Model 1 training
+- tensorflow_regression.ipynb : Model 2 training
 
-All notebooks mount Google Drive and save outputs to `/content/drive/MyDrive/chicago-crime-ml/`.
+All notebooks mount Google Drive and save outputs to /content/drive/MyDrive/chicago-crime-ml/.
 
-> **Note:** Notebook 1 must be run before Notebooks 2 and 3 as it generates the CSV files they depend on. PySpark does not run locally on Windows with Java 25 — use Colab. 
+**Note:** bigquery_pyspark.ipynb must be run before the model training notebooks as it generates the CSV files they depend on. PySpark does not run locally on Windows with Java 25, so use Colab. 
