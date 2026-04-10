@@ -75,9 +75,9 @@ chicago-crime-ml/
 │   └── tf_actual_vs_predicted.png
 │
 ├── google_colab_notebooks/                         # Colab notebooks (.ipynb)
-│   ├── notebook1_bigquery_pyspark.ipynb
-│   ├── notebook2_lightgbm_classifier.ipynb
-│   └── notebook3_tensorflow_regressor.ipynb
+│   ├── bigquery_pyspark.ipynb
+│   ├── lightgbm_classifier.ipynb
+│   └── tensorflow_regressor.ipynb
 │
 ├── predictive_modeling/
 │   ├── light_gbm_classifier.py        
